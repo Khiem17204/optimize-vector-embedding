@@ -148,54 +148,29 @@ def fact_check(corpus_df, queries_df):
         search_results = corpus_df.sem_search(
             'text',
             f"Which text answer this question: {query_text}?",
-            K=10,
+            K=5,
         )
-        
         logger.info(f"Retrieved {len(search_results)} documents")
         
-        # Tag results with metadata
-        # search_results["query_id"] = query_id
-        # search_results["claim"] = claim
-        # search_results["mapped_query"] = query_text
-        logger.info(search_results)
-        results.append(search_results)
+        logger.info(f'Started filtering process for claim: {claim}')
+        supporting_search_results = search_results.sem_filter(
+            f"Text provide evidence for {claim}?"
+        )
+                # If you have a unique identifier column like 'doc_id'
+        supporting_ids = supporting_search_results['doc_id'].tolist()
+        unsupporting_search_results = search_results[~search_results['doc_id'].isin(supporting_ids)]
+        results.append({
+            "claim": claim,
+            "mapped_query": query_text,
+            "supporting_texts": "\n---\n".join(supporting_search_results['text'].tolist()),
+            "non_supporting_texts": "\n---\n".join(unsupporting_search_results['text'].tolist()),
+        })
         
-
-    
-    if not results:
-        logger.error("No results retrieved for any claims. Aborting fact-checking process.")
-        return pd.DataFrame()  # Return empty DataFrame if no results
-    
-    # Combine all results
-    logger.info("Combining retrieval results...")
-    retrieved_df = pd.concat(results)
-    logger.info(f"Combined dataframe has {len(retrieved_df)} rows")
-    
-    # Step 3: Evidence filtering
-    logger.info("Filtering evidence...")
-    try:
-        retrieved_df = retrieved_df.sem_filter(
-            user_instruction="Does the following document support the claim '{claim}'?\n\n{text}",
-            suffix="_filter"  # This creates a column named "text_filter"
-        )        
-        # Log evidence distribution
-        if "text_filter" in retrieved_df.columns:
-            value_counts = retrieved_df["text_filter"].value_counts().to_dict()
-            logger.info(f"Evidence distribution: {value_counts}")
-    except Exception as e:
-        logger.error(f"Error during evidence filtering: {e}")
-        # Add a default filter column as fallback
-        retrieved_df["text_filter"] = "unknown"
-    
-    # Step 4: Final claim verification (optional addition)
-    # You could add a final verification step here that takes the filtered evidence
-    # and makes a final judgment about each claim (SUPPORTED, REFUTED, NOT ENOUGH INFO)
-        
-    return retrieved_df
+    return pd.DataFrame(results)
 
 
 # === Run Everything ===
 if __name__ == "__main__":
     corpus_df, queries_df = data_load(5)
     results_df = fact_check(corpus_df, queries_df)
-    print(results_df)
+    results_df.to_csv("fever_fact_check_output.csv", index=False)
