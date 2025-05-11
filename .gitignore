@@ -1,3 +1,8 @@
 .env
 /datasets/*
 /index/*
+e5-base-v2-local
+mxbai-rerank-local
+*.yml
+*.err
+*.out
